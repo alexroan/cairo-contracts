@@ -37,6 +37,7 @@ async def erc677_factory():
         constructor_calldata=[
             str_to_felt("Token"),  # name
             str_to_felt("TKN"),  # symbol
+            *uint(1000),               # initial_supply
             account.contract_address
         ]
     )
@@ -433,115 +434,6 @@ async def test_approve_zero_address_caller(erc677_factory):
     # (get_caller_address) is zero
     try:
         await erc677.approve(spender, amount).invoke()
-        assert False
-    except StarkException as err:
-        _, error = err.args
-        assert error['code'] == StarknetErrorCode.TRANSACTION_FAILED
-
-
-@pytest.mark.asyncio
-async def test_mint_to_zero_address(erc677_factory):
-    _, erc677, account, _ = erc677_factory
-    zero_address = 0
-    amount = uint(1)
-
-    try:
-        await signer.send_transaction(account, erc677.contract_address, 'mint', [zero_address, *amount])
-        assert False
-    except StarkException as err:
-        _, error = err.args
-        assert error['code'] == StarknetErrorCode.TRANSACTION_FAILED
-
-
-@pytest.mark.asyncio
-async def test_mint_overflow(erc677_factory):
-    _, erc677, account, _ = erc677_factory
-    recipient = 789
-    # fetching the previously minted totalSupply and verifying the overflow check
-    # (totalSupply >= 2**256) should fail, (totalSupply < 2**256) should pass
-    execution_info = await erc677.totalSupply().call()
-    previous_supply = execution_info.result.totalSupply
-
-    # pass_amount subtracts the already minted supply from MAX_AMOUNT in order for
-    # the minted supply to equal MAX_AMOUNT
-    # (2**128 - 1, 2**128 - 1)
-    pass_amount = (
-        MAX_AMOUNT[0] - previous_supply[0],  # 2**128 - 1
-        MAX_AMOUNT[1] - previous_supply[1]  # 2**128 - 1
-    )
-
-    # fail_amount displays the edge case where any addition over MAX_SUPPLY
-    # should result in a failing tx
-    fail_amount = (
-        pass_amount[0] + 1,  # 2**128 (will overflow)
-        pass_amount[1]   # 2**128 - 1
-    )
-
-    try:
-        await signer.send_transaction(account, erc677.contract_address, 'mint', [recipient, *fail_amount])
-        assert False
-    except StarkException as err:
-        _, error = err.args
-        assert error['code'] == StarknetErrorCode.TRANSACTION_FAILED
-
-    # should pass
-    await signer.send_transaction(account, erc677.contract_address, 'mint', [recipient, *pass_amount])
-
-
-@pytest.mark.asyncio
-async def test_burn(erc677_factory):
-    _, erc677, account, _ = erc677_factory
-    user = 789
-    burn_amount = uint(500)
-    execution_info = await erc677.totalSupply().call()
-    previous_supply = execution_info.result.totalSupply
-
-    execution_info = await erc677.balanceOf(user).call()
-    previous_balance = execution_info.result.balance
-
-    await signer.send_transaction(account, erc677.contract_address, 'burn', [user, *burn_amount])
-
-    # total supply should reflect the burned amount
-    execution_info = await erc677.totalSupply().call()
-    assert execution_info.result.totalSupply == (
-        previous_supply[0] - burn_amount[0],
-        previous_supply[1] - burn_amount[1]
-    )
-
-    # user balance should reflect the burned amount
-    execution_info = await erc677.balanceOf(user).call()
-    assert execution_info.result.balance == (
-        previous_balance[0] - burn_amount[0],
-        previous_balance[1] - burn_amount[1]
-    )
-
-
-@pytest.mark.asyncio
-async def test_burn_zero_address(erc677_factory):
-    _, erc677, account, _ = erc677_factory
-    zero_address = 0
-    burn_amount = uint(1)
-
-    try:
-        await signer.send_transaction(account, erc677.contract_address, 'burn', [zero_address, *burn_amount])
-        assert False
-    except StarkException as err:
-        _, error = err.args
-        assert error['code'] == StarknetErrorCode.TRANSACTION_FAILED
-
-
-@pytest.mark.asyncio
-async def test_burn_overflow(erc677_factory):
-    _, erc677, account, _ = erc677_factory
-    user = 789
-    execution_info = await erc677.balanceOf(user).call()
-    previous_balance = execution_info.result.balance
-    # increasing the burn amount to more than the user's balance
-    # should make the tx fail
-    burn_amount = (previous_balance[0] + 1, previous_balance[1])
-
-    try:
-        await signer.send_transaction(account, erc677.contract_address, 'burn', [user, *burn_amount])
         assert False
     except StarkException as err:
         _, error = err.args
